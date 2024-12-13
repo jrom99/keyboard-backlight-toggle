@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "target": "ES2022",
+    "checkJs": true,
+    "lib": [
+      "ES2022"
+    ]
+  },
+  "include": [
+    "ambient.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ],
+  "files": [
+    "extension.js",
+    "utils/widgets.js",
+    "utils/manager.js"
+  ]
+}

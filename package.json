@@ -1,0 +1,11 @@
+{
+  "devDependencies": {
+    "eslint": "^9.16.0",
+    "eslint-plugin-jsdoc": "^50.6.1"
+  },
+  "dependencies": {
+    "@girs/gjs": "^4.0.0-beta.19",
+    "@girs/gnome-shell": "^47.0.0",
+    "@girs/gudev-1.0": "^1.0.0-4.0.0-beta.19"
+  }
+}

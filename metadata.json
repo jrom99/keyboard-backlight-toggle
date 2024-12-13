@@ -1,0 +1,8 @@
+{
+  "uuid": "keyboard-backlight-toggle@jrom99.github.com",
+  "name": "Keyboard Backlight Toggle",
+  "description": "Replace the quick settings toggle for keyboard backlight.",
+  "shell-version": [
+    "47"
+  ]
+}
