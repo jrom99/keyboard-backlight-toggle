@@ -12,7 +12,7 @@ const APP_ID = "keyboard-backlight@jrom99.github.com";
 
 // Slider is a Gtk.Scale re-implementation for quick settings
 
-export const HueSliderItem = GObject.registerClass(
+export const HueSlider = GObject.registerClass(
   {
     Properties: {
       value: GObject.ParamSpec.int(
@@ -26,14 +26,12 @@ export const HueSliderItem = GObject.registerClass(
       ),
     },
   },
-  class HueSliderItem extends PopupMenu.PopupBaseMenuItem {
+  class HueSlider extends PopupMenu.PopupBaseMenuItem {
     constructor() {
       super({
         activate: false,
         style_class: "keyboard-color-item",
       });
-
-      console.log(`${APP_ID}: Creating HueSliderItem...`);
       this._icon = new St.Icon({ iconName: "preferences-color-symbolic" });
       this._slider = new Slider(0);
 
@@ -74,7 +72,7 @@ export const HueSliderItem = GObject.registerClass(
   },
 );
 
-export const BrightnessSliderItem = GObject.registerClass(
+export const BrightnessSlider = GObject.registerClass(
   {
     Properties: {
       value: GObject.ParamSpec.int(
@@ -88,14 +86,12 @@ export const BrightnessSliderItem = GObject.registerClass(
       ),
     },
   },
-  class BrightnessSliderItem extends PopupMenu.PopupBaseMenuItem {
+  class BrightnessSlider extends PopupMenu.PopupBaseMenuItem {
     constructor() {
       super({
         activate: false,
         style_class: "keyboard-brightness-item",
       });
-      console.log(`${APP_ID}: Creating brightness slider...`);
-
       this._icon = new St.Icon({ iconName: "keyboard-brightness-symbolic" });
       this._slider = new Slider(0);
 

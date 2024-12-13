@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+import argparse
+
+SYSFS_PREFIX = "/sys/class/leds/rgb:kbd_backlight"
+
+def write(file: str, value: str):
+    try:
+        with open(file, "w") as handle:
+            handle.write(value)
+    except PermissionError:
+        print(f"Error: Permission denied when writing to {file}. Try running as root")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+def set_brightness(value: int):
+    value = max(0, min(4, value))
+    write(f"{SYSFS_PREFIX}/brightness", str(value))
+
+
+def set_color(red: int, green: int, blue: int):
+    rgb_value = " ".join(str(max(0, min(255, v))) for v in [red, green, blue])
+    write(f"{SYSFS_PREFIX}/multi_intensity", rgb_value)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Control the keyboard backlight's brightness and RGB settings."
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    bright = subparsers.add_parser("brightness", help="Set keyboard backlight brightness")
+    bright.add_argument(
+       "value", type=int, choices=range(5), help="Brightness value (0-4)"
+   )
+
+    color = subparsers.add_parser("color", help="Set keyboard backlight RGB intensity")
+    color.add_argument("red", type=int, help="Red intensity (0-255)")
+    color.add_argument("green", type=int, help="Green intensity (0-255)")
+    color.add_argument("blue", type=int, help="Blue intensity (0-255)")
+
+    args = parser.parse_args()
+
+    if args.command == "brightness":
+        set_brightness(args.value)
+    elif args.command == "color":
+        set_color(args.red, args.green, args.blue)
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()
