@@ -1,7 +1,6 @@
 import Clutter from "gi://Clutter";
 import GObject from "gi://GObject";
 import St from "gi://St";
-import Gtk from "gi://Gtk?version=4.0";
 
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import { gettext as _ } from "resource:///org/gnome/shell/extensions/extension.js";
@@ -18,7 +17,7 @@ export const HueSlider = GObject.registerClass(
       value: GObject.ParamSpec.int(
         "value",
         "Value",
-        "Keyboard backlight color hue percentage",
+        "Slider value",
         GObject.ParamFlags.READWRITE,
         0,
         360,
@@ -69,13 +68,13 @@ export const HueSlider = GObject.registerClass(
   },
 );
 
-export const BrightnessSlider = GObject.registerClass(
+export const LightnessSlider = GObject.registerClass(
   {
     Properties: {
       value: GObject.ParamSpec.int(
         "value",
         "Value",
-        "Keyboard backlight brightness percentage",
+        "Slider percentage value",
         GObject.ParamFlags.READWRITE,
         0,
         100,

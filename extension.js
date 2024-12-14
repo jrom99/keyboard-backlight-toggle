@@ -6,9 +6,8 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { Extension, gettext as _ } from "resource:///org/gnome/shell/extensions/extension.js";
 import { QuickMenuToggle, SystemIndicator } from "resource:///org/gnome/shell/ui/quickSettings.js";
 
-import { BrightnessSlider, HueSlider } from "./utils/widgets.js";
+import { LightnessSlider, HueSlider } from "./utils/widgets.js";
 import { LedManager } from "./utils/manager.js";
-import { runProcess } from "./utils/helpers.js";
 
 const APP_ID = "keyboard-backlight-toggle@jrom99.github.com";
 
@@ -33,8 +32,8 @@ const KeyboardBacklightToggle = GObject.registerClass(
         return;
       }
 
-      this._brightnessSlider = new BrightnessSlider();
-      this.menu.box.add_child(this._brightnessSlider);
+      this._lightnessSlider = new LightnessSlider();
+      this.menu.box.add_child(this._lightnessSlider);
 
       this._hueSlider = new HueSlider();
       this.menu.box.add_child(this._hueSlider);
@@ -44,7 +43,7 @@ const KeyboardBacklightToggle = GObject.registerClass(
         toggle: this.connect("clicked", () => {
           this._manager.toggleBrightness(this.checked);
         }),
-        brightnessSlider: this._brightnessSlider.connect("notify::value", (src) => {
+        lightnessSlider: this._lightnessSlider.connect("notify::value", (src) => {
           this._setHardwareListening(false);
           this._manager.lightness = src.value;
           this._setHardwareListening(true);
@@ -82,21 +81,21 @@ const KeyboardBacklightToggle = GObject.registerClass(
     }
 
     _syncLightnessSlider() {
-      if (this.uiHandlers === undefined || this._brightnessSlider === undefined)
+      if (this.uiHandlers === undefined || this._lightnessSlider === undefined)
         throw new Error(`${APP_ID}: UI is not available to update.`);
 
-      console.debug(`${APP_ID}: syncing brightness slider...`);
+      console.debug(`${APP_ID}: syncing lightness slider...`);
 
-      const brightness = this._manager.lightness;
+      const lightness = this._manager.lightness;
 
-      this.checked = brightness > 0;
+      this.checked = lightness > 0;
 
       // change without emitting unnecessary event
-      const handlerId = this.uiHandlers.brightnessSlider;
+      const handlerId = this.uiHandlers.lightnessSlider;
 
-      this._brightnessSlider.block_signal_handler(handlerId);
-      this._brightnessSlider.value = brightness;
-      this._brightnessSlider.unblock_signal_handler(handlerId);
+      this._lightnessSlider.block_signal_handler(handlerId);
+      this._lightnessSlider.value = lightness;
+      this._lightnessSlider.unblock_signal_handler(handlerId);
     }
 
     _syncHueSlider() {
