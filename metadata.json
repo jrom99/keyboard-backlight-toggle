@@ -4,5 +4,6 @@
   "description": "Replace the quick settings toggle for keyboard backlight.",
   "shell-version": [
     "47"
-  ]
+  ],
+  "url": "https://github.com/jrom99/keyboard-backlight-toggle"
 }
