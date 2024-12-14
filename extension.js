@@ -3,17 +3,12 @@ import GObject from "gi://GObject";
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
-import {
-  Extension,
-  gettext as _,
-} from "resource:///org/gnome/shell/extensions/extension.js";
-import {
-  QuickMenuToggle,
-  SystemIndicator,
-} from "resource:///org/gnome/shell/ui/quickSettings.js";
+import { Extension, gettext as _ } from "resource:///org/gnome/shell/extensions/extension.js";
+import { QuickMenuToggle, SystemIndicator } from "resource:///org/gnome/shell/ui/quickSettings.js";
 
 import { BrightnessSlider, HueSlider } from "./utils/widgets.js";
 import { LedManager } from "./utils/manager.js";
+import { runProcess } from "./utils/helpers.js";
 
 const APP_ID = "keyboard-backlight-toggle@jrom99.github.com";
 
@@ -25,13 +20,18 @@ const KeyboardBacklightToggle = GObject.registerClass(
         iconName: "input-keyboard-symbolic",
       });
       this._manager = new LedManager();
-      this._manager.startPolling();
 
-      this._manager.connect("notify::brightness", () => { this._syncBrightnessSlider() })
-
-      this.connect("clicked", () => {
-        this._manager.toggleBrightness(this.checked);
-      });
+      // hide toggle if backlight is not available (driver misconfig)
+      if (!this._manager.canRead) {
+        this.visible = false;
+        console.error(`${APP_ID}: backlight status is not available. Toggle will remain hidden`)
+        return;
+      }
+      if (!this._manager.canWrite) {
+        this.visible = false;
+        console.error(`${APP_ID}: backlight control is not available. Toggle will remain hidden`);
+        return;
+      }
 
       this._brightnessSlider = new BrightnessSlider();
       this.menu.box.add_child(this._brightnessSlider);
@@ -39,41 +39,84 @@ const KeyboardBacklightToggle = GObject.registerClass(
       this._hueSlider = new HueSlider();
       this.menu.box.add_child(this._hueSlider);
 
-      this._brightnessSliderItemChangedId = this._brightnessSlider.connect(
-        "notify::value",
-        () => {
-          this._manager.brightnessPercentage = this._brightnessSlider.value;
-        },
-      );
+      // connect events
+      this.uiHandlers = {
+        toggle: this.connect("clicked", () => {
+          this._manager.toggleBrightness(this.checked);
+        }),
+        brightnessSlider: this._brightnessSlider.connect("notify::value", (src) => {
+          this._setHardwareListening(false);
+          this._manager.lightness = src.value;
+          this._setHardwareListening(true);
+        }),
+        hueSlider: this._hueSlider.connect("notify::value", (src) => {
+          this._setHardwareListening(false);
+          this._manager.hue = src.value;
+          this._setHardwareListening(true);
+        }),
+      };
+
+      this.hardwareHandlers = {
+        brightness: this._manager.connect("hw-brightness-changed", () => this._syncLightnessSlider()),
+        color: this._manager.connect("hw-color-changed", () => this._syncHueSlider()),
+      };
 
       // initial slider sync
-      this._syncBrightnessSlider();
+      this._syncLightnessSlider();
+      this._syncHueSlider();
     }
 
-    _syncBrightnessSlider() {
-      console.log(`${APP_ID}: Syncing brightness slider...`);
+    /** Set UI update behavior due to hardware changes
+     * @param {boolean} on
+     */
+    _setHardwareListening(on) {
+      if (this.hardwareHandlers === undefined) return;
 
-      const brightness = this._manager.brightnessPercentage;
-      const visible = Number.isInteger(brightness) && brightness >= 0;
-      this.visible = visible;
+      if (on) {
+        GObject.signal_handler_unblock(this._manager, this.hardwareHandlers?.brightness);
+        GObject.signal_handler_unblock(this._manager, this.hardwareHandlers.color);
+      } else {
+        GObject.signal_handler_block(this._manager, this.hardwareHandlers?.brightness);
+        GObject.signal_handler_block(this._manager, this.hardwareHandlers?.color);
+      }
+    }
 
-      // hide toggle if backlight is not available (driver misconfig)
-      if (!visible) return;
+    _syncLightnessSlider() {
+      if (this.uiHandlers === undefined || this._brightnessSlider === undefined)
+        throw new Error(`${APP_ID}: UI is not available to update.`);
+
+      console.debug(`${APP_ID}: syncing brightness slider...`);
+
+      const brightness = this._manager.lightness;
 
       this.checked = brightness > 0;
 
       // change without emitting unnecessary event
-      this._brightnessSlider.block_signal_handler(
-        this._brightnessSliderItemChangedId,
-      );
+      const handlerId = this.uiHandlers.brightnessSlider;
+
+      this._brightnessSlider.block_signal_handler(handlerId);
       this._brightnessSlider.value = brightness;
-      this._brightnessSlider.unblock_signal_handler(
-        this._brightnessSliderItemChangedId,
-      );
+      this._brightnessSlider.unblock_signal_handler(handlerId);
+    }
+
+    _syncHueSlider() {
+      if (this.uiHandlers === undefined || this._hueSlider === undefined)
+        throw new Error(`${APP_ID}: UI is not available to update.`);
+
+      console.debug(`${APP_ID}: syncing hue slider...`);
+
+      const hue = this._manager.hue;
+
+      // change without emitting unnecessary event
+      const handlerId = this.uiHandlers.hueSlider;
+
+      this._hueSlider.block_signal_handler(handlerId);
+      this._hueSlider.value = hue;
+      this._hueSlider.unblock_signal_handler(handlerId);
     }
 
     destroy() {
-      this._manager.stopPolling();
+      this._manager.destroy();
       super.destroy();
     }
   },
@@ -95,28 +138,26 @@ const Indicator = GObject.registerClass(
 
 export default class MyExtension extends Extension {
   enable() {
-    console.log(`${APP_ID}: Enabling extension...`);
+    console.info(`${APP_ID}: Enabling extension...`);
     const quickSettings = Main.panel.statusArea.quickSettings;
 
     this._indicator = new Indicator();
     quickSettings.addExternalIndicator(this._indicator);
 
-    console.log(`${APP_ID}: Hiding original keyboard toggle...`);
+    console.info(`${APP_ID}: Hiding original keyboard toggle...`);
 
     /** @type {QuickMenuToggle} */
     this._originalToggle = quickSettings._backlight.quickSettingsItems[0];
 
     // toggle.visible is not reliable
     this._originalToggle?.hide();
-    this._signalId = this._originalToggle?.connect("show", (toggle) =>
-      toggle.hide(),
-    );
+    this._signalId = this._originalToggle?.connect("show", (toggle) => toggle.hide());
   }
 
   disable() {
-    console.log(`${APP_ID}: Disabling extension...`);
+    console.info(`${APP_ID}: Disabling extension...`);
 
-    console.log(`${APP_ID}: Showing original keyboard toggle...`);
+    console.info(`${APP_ID}: Showing original keyboard toggle...`);
     if (this._signalId !== undefined) {
       this._originalToggle?.disconnect(this._signalId);
       this._originalToggle?.show();

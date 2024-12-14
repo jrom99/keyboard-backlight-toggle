@@ -18,6 +18,7 @@
   "files": [
     "extension.js",
     "utils/widgets.js",
-    "utils/manager.js"
+    "utils/manager.js",
+    "utils/helpers.js"
   ]
 }

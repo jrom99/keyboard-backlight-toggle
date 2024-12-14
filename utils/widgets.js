@@ -21,7 +21,7 @@ export const HueSlider = GObject.registerClass(
         "Keyboard backlight color hue percentage",
         GObject.ParamFlags.READWRITE,
         0,
-        100,
+        360,
         0,
       ),
     },
@@ -35,9 +35,7 @@ export const HueSlider = GObject.registerClass(
       this._icon = new St.Icon({ iconName: "preferences-color-symbolic" });
       this._slider = new Slider(0);
 
-      this._sliderChangedId = this._slider.connect("notify::value", () =>
-        this.notify("value"),
-      );
+      this._sliderChangedId = this._slider.connect("notify::value", () => this.notify("value"));
       this._slider.accessible_name = _("Keyboard Color Hue");
 
       this.add_child(this._icon);
@@ -45,14 +43,14 @@ export const HueSlider = GObject.registerClass(
     }
 
     get value() {
-      return this._slider.value * 100;
+      return this._slider.value * 360;
     }
 
     set value(value) {
       if (this.value === value) return;
 
       this._slider.block_signal_handler(this._sliderChangedId);
-      this._slider.value = value / 100;
+      this._slider.value = value / 360;
       this._slider.unblock_signal_handler(this._sliderChangedId);
 
       this.notify("value");
@@ -65,8 +63,7 @@ export const HueSlider = GObject.registerClass(
      */
     vfunc_key_press_event(event) {
       const key = event.get_key_symbol();
-      if (key === Clutter.KEY_Left || key === Clutter.KEY_Right)
-        return this._slider.vfunc_key_press_event(event);
+      if (key === Clutter.KEY_Left || key === Clutter.KEY_Right) return this._slider.vfunc_key_press_event(event);
       else return super.vfunc_key_press_event(event);
     }
   },
@@ -95,9 +92,7 @@ export const BrightnessSlider = GObject.registerClass(
       this._icon = new St.Icon({ iconName: "keyboard-brightness-symbolic" });
       this._slider = new Slider(0);
 
-      this._sliderChangedId = this._slider.connect("notify::value", () =>
-        this.notify("value"),
-      );
+      this._sliderChangedId = this._slider.connect("notify::value", () => this.notify("value"));
       this._slider.accessible_name = _("Keyboard Brightness");
 
       this.add_child(this._icon);
@@ -125,8 +120,7 @@ export const BrightnessSlider = GObject.registerClass(
      */
     vfunc_key_press_event(event) {
       const key = event.get_key_symbol();
-      if (key === Clutter.KEY_Left || key === Clutter.KEY_Right)
-        return this._slider.vfunc_key_press_event(event);
+      if (key === Clutter.KEY_Left || key === Clutter.KEY_Right) return this._slider.vfunc_key_press_event(event);
       else return super.vfunc_key_press_event(event);
     }
   },

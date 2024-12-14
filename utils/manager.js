@@ -1,7 +1,8 @@
-import Gio from "gi://Gio";
 import GUdev from "gi://GUdev?version=1.0";
 import GObject from "gi://GObject";
 import GLib from "gi://GLib";
+
+import { runProcess, Color, clampInt } from "./helpers.js";
 
 const APP_ID = "keyboard-backlight-toggle@jrom99.github.com";
 const SYSFS_PREFIX = "/sys/class/leds/rgb:kbd_backlight";
@@ -17,58 +18,6 @@ const SCRIPT_PATH = GLib.build_filenamev([
   "kbd-light",
 ]);
 
-/* Gio.Subprocess */
-Gio._promisify(Gio.Subprocess.prototype, "communicate_async");
-Gio._promisify(Gio.Subprocess.prototype, "communicate_utf8_async");
-Gio._promisify(Gio.Subprocess.prototype, "wait_async");
-Gio._promisify(Gio.Subprocess.prototype, "wait_check_async");
-
-/* Ancillary Methods */
-Gio._promisify(
-  Gio.DataInputStream.prototype,
-  "read_line_async",
-  "read_line_finish_utf8",
-);
-Gio._promisify(Gio.OutputStream.prototype, "write_bytes_async");
-
-/**
- * Run a process synchronously
- * @param {string[]} argv
- */
-function runProcess(argv) {
-  const proc = Gio.Subprocess.new(
-    argv,
-    Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
-  );
-
-  /** @see {@link https://developer.mozilla.org/en-US/docs/Glossary/IIFE} */
-  (async () => {
-    const [stdout, stderr] = await proc.communicate_utf8_async(null, null);
-
-    const status = proc.get_exit_status();
-
-    if (status !== 0) {
-      console.error(
-        `${APP_ID}: Comand "${argv.join(" ")}" failed with exit code ${status}: ${stderr.trim()}`,
-      );
-    } else {
-      console.log(`${APP_ID}: Command "${argv.join(" ")}" finished: ${stdout}`);
-    }
-  })();
-}
-
-class Color {
-  constructor({ red = 0, green = 0, blue = 0 } = {}) {
-    this.red = red;
-    this.green = green;
-    this.blue = blue;
-  }
-
-  toString() {
-    return `RGB(${this.red}, ${this.green}, ${this.blue})`;
-  }
-}
-
 // There is a dbus for brightness, but not for color
 // Since we can't monitor sysfs natively, we use polling
 
@@ -76,14 +25,27 @@ export const LedManager = GObject.registerClass(
   {
     Properties: {
       brightness: GObject.ParamSpec.int(
-        "brightness",
-        "Brightness",
-        "Keyboard backlight brightness (from 0 to hardware maximum)",
+        "lightness",
+        "Lightness",
+        "Keyboard backlight adjusted lightness",
         GObject.ParamFlags.READWRITE,
         0,
-        100, // arbitrary maximum
+        100,
         0,
       ),
+      hue: GObject.ParamSpec.int(
+        "hue",
+        "Hue",
+        "Keyboard backlight adjusted hue color",
+        GObject.ParamFlags.READWRITE,
+        0,
+        360,
+        0,
+      ),
+    },
+    Signals: {
+      "hw-brightness-changed": {},
+      "hw-color-changed": {},
     },
   },
   class LedManager extends GObject.Object {
@@ -93,17 +55,41 @@ export const LedManager = GObject.registerClass(
       this._client = new GUdev.Client();
       this._device = this._client.query_by_sysfs_path(`${SYSFS_PREFIX}`);
 
-      this._maxBrightness =
-        this._device?.get_sysfs_attr_as_int("max_brightness");
-      this._multiIndex = this._device?.get_sysfs_attr_as_strv("multi_index");
+      const [c1, c2, c3] = this._device?.get_sysfs_attr_as_strv("multi_index") ?? ["red", "green", "blue"];
 
-      this._brightness = this._device?.get_sysfs_attr_as_int("brightness") ?? 0;
+      /** Order of the colors as defined in the multi_intensity file
+       * @type {[string, string, string]}
+       */
+      this._HWmultiIndex = [c1, c2, c3];
+
+      /** Hardware defined maximum brightness
+       * @type {number}
+       */
+      this._HWmaxBrightness = this._device?.get_sysfs_attr_as_int("max_brightness") ?? 0;
+
       this._pollIntervalId = null;
+
+      /** HSL internal state holder
+       * @type {undefined | number}
+       */
+      this._hue;
+      /** HSL internal state holder
+       * @type {undefined | number}
+       */
+      this._lightness;
+
+      /** HSL (constant) saturation
+       * @type {number}
+       */
+      this.saturation = 100;
+
+      this.startPolling();
     }
 
     startPolling() {
       const poll = () => {
-        this.brightness; // trigger check
+        this.lightness;
+        this.hue;
         this._pollIntervalId = setTimeout(poll, 100);
       };
       poll();
@@ -116,73 +102,171 @@ export const LedManager = GObject.registerClass(
       }
     }
 
-    /**
-     *
+    /** Switch brightness between on and off status, remembering the previous brightness
      * @param {boolean} off
      */
     toggleBrightness(off) {
-      console.log(`${APP_ID}: Toggling brightness ${off ? "off" : "on"}`);
+      console.debug(`${APP_ID}: Toggling brightness ${off ? "off" : "on"}`);
       if (off) {
-        /** @type {number} */
-        this._oldBrightness = this.brightness;
-        this.brightness = 0;
+        this._oldBrightness = this._HardwareBrightness;
+        this._HardwareBrightness = 0;
       } else {
-        this.brightness = this._oldBrightness ?? this.maxBrightness;
+        this._HardwareBrightness = this._oldBrightness ?? this._HWmaxBrightness;
+        this._oldBrightness = null;
       }
     }
 
-    get maxBrightness() {
-      return this._maxBrightness ?? 0;
+    /** Brightness as reported by the kernel */
+    get _HardwareBrightness() {
+      return this._device?.get_sysfs_attr_as_int_uncached("brightness") ?? 0;
     }
 
-    get brightness() {
-      const newValue =
-        this._device?.get_sysfs_attr_as_int_uncached("brightness") ?? 0;
-      if (this._brightness !== newValue) {
-        this._brightness = newValue;
-        this.notify("brightness");
-      }
-      return this._brightness;
+    set _HardwareBrightness(value) {
+      const oldValue = this._HardwareBrightness;
+      const newValue = clampInt(value, 0, this._HWmaxBrightness);
+      if (oldValue === newValue) return;
+
+      console.debug(`${APP_ID}: changing hardware brightness from ${oldValue} to ${newValue}`);
+      const status = runProcess(["sudo", SCRIPT_PATH, "brightness", newValue.toString()]);
+      if (status === 0) this.emit("hw-brightness-changed");
     }
 
-    set brightness(value) {
-      value = Math.max(0, Math.min(this.maxBrightness, value));
-      if (value === this.brightness) return;
-
-      console.log(
-        `${APP_ID}: setting brightness from ${this.brightness} to ${value}`,
-      );
-      runProcess(["sudo", SCRIPT_PATH, "brightness", value.toString()]);
-      this.brightness; // trigger check
-    }
-
-    get brightnessPercentage() {
-      return (100 * this.brightness) / this.maxBrightness;
-    }
-
-    set brightnessPercentage(value) {
-      this.brightness = Math.round((value * this.maxBrightness) / 100);
-    }
-
-    get multiIndex() {
-      return (
-        /** @type {[string, string, string]} */ (this._multiIndex) ?? [
-          "red",
-          "green",
-          "blue",
-        ]
-      );
-    }
-
-    get rgb() {
-      const colorValues =
-        this._device?.get_sysfs_attr_as_strv_uncached("multi_intensity");
-      if (!colorValues) return new Color();
+    /** RGB as reported by the kernel */
+    get _HardwareRgb() {
+      const colorValues = this._device?.get_sysfs_attr_as_strv_uncached("multi_intensity");
+      if (!colorValues) return { red: 255, green: 255, blue: 255 };
 
       const mergedColor = colorValues
-        .map((item, idx) => ({ [this.multiIndex[idx]]: parseInt(item) }))
+        .map((item, idx) => ({ [this._HWmultiIndex[idx]]: parseInt(item) }))
         .reduce((acc, curr) => ({ ...acc, ...curr }));
-      return new Color(mergedColor);
+
+      return {
+        red: mergedColor.red,
+        green: mergedColor.green,
+        blue: mergedColor.blue,
+      };
+    }
+
+    set _HardwareRgb({ red, green, blue }) {
+      const { red: or, green: og, blue: ob } = this._HardwareRgb;
+
+      const nr = clampInt(red, 0, 255);
+      const ng = clampInt(green, 0, 255);
+      const nb = clampInt(blue, 0, 255);
+
+      if (or === nr && og === ng && ob === nb) return;
+
+      console.debug(`${APP_ID}: changing hardware color from rgb(${or}, ${og}, ${ob}) to rgb(${nr}, ${ng}, ${nb})`);
+      const status = runProcess(["sudo", SCRIPT_PATH, "color", nr.toString(), ng.toString(), nb.toString()]);
+      if (status === 0) this.emit("hw-color-changed");
+    }
+
+    /** If the manager can read hardware changes */
+    get canRead() {
+      return typeof this._device?.get_sysfs_attr_as_int("max_brightness") === "number";
+    }
+
+    /** If the manager can write changes to hardware */
+    get canWrite() {
+      return runProcess(["sudo", SCRIPT_PATH, "--help"]) === 0;
+    }
+
+    /** Canonical adjusted RGB
+     * @see {@link https://www.kernel.org/doc/html/latest/leds/leds-class-multicolor.html}
+     */
+    get rgb() {
+      const { red, green, blue } = this._HardwareRgb;
+      const brightness = this._HardwareBrightness;
+      const maxBrightness = this._HWmaxBrightness;
+      return {
+        red: Math.round((red * brightness) / maxBrightness),
+        green: Math.round((green * brightness) / maxBrightness),
+        blue: Math.round((blue * brightness) / maxBrightness),
+      };
+    }
+
+    get lightness() {
+      const oldValue = this._lightness;
+      const newValue = this._HardwareBrightness === 0 ? 0 : Color.RGBToHSL(this.rgb).lightness;
+      if (oldValue !== newValue) {
+        this._lightness = newValue;
+        this.notify("lightness");
+      }
+      return newValue;
+    }
+
+    get hue() {
+      const oldValue = this._hue;
+      const newValue = Color.RGBToHSL(this.rgb).hue;
+      if (oldValue !== newValue) {
+        this._hue = newValue;
+        this.notify("hue");
+      }
+
+      return newValue;
+    }
+
+    /** @param {number} value */
+    set lightness(value) {
+      const newValue = clampInt(value, 0, 100);
+      const oldValue = this.lightness;
+      const oldHue = this.hue;
+      if (oldValue === newValue) return;
+
+      console.debug(`${APP_ID}: setting lightness from ${oldValue}% to ${newValue}%`);
+
+      if (newValue === 0) {
+        this._HardwareBrightness = 0;
+        return;
+      } else if (newValue === 100) {
+        this._HardwareBrightness === this._HWmaxBrightness;
+        return;
+      }
+
+      const { red, green, blue } = Color.HSLToRGB({
+        lightness: newValue,
+        saturation: this.saturation,
+        hue: oldHue,
+      });
+      const { red: curRed, green: curGreen, blue: curBlue } = this._HardwareRgb;
+      const { red: canRed, green: canGreen, blue: canBlue } = this.rgb;
+      console.debug(
+        `${APP_ID}: canonical color rgb(${red} ${green} ${blue}), current color rgb(${curRed} ${curGreen} ${curBlue}) and brightness ${this._HardwareBrightness} (canonical rgb(${canRed} ${canGreen} ${canBlue}))`,
+      );
+
+      this._HardwareRgb = { red, green, blue };
+      this._HardwareBrightness = this._HWmaxBrightness;
+
+      this.notify("lightness");
+    }
+
+    /** @param {number} value */
+    set hue(value) {
+      const newValue = clampInt(value, 0, 360);
+      const oldValue = this.hue;
+      const oldLightness = this.lightness;
+      if (oldValue === newValue) return;
+
+      console.debug(`${APP_ID}: setting hue from ${this.hue} to ${value}`);
+
+      const { red, green, blue } = Color.HSLToRGB({
+        lightness: oldLightness,
+        saturation: this.saturation,
+        hue: newValue,
+      });
+      const { red: curRed, green: curGreen, blue: curBlue } = this._HardwareRgb;
+      console.debug(
+        `${APP_ID}: canonical color rgb(${red} ${green} ${blue}), current color rgb(${curRed} ${curGreen} ${curBlue}) and brightness ${this._HardwareBrightness}`,
+      );
+
+      this._HardwareRgb = { red, green, blue };
+      this._HardwareBrightness = this._HWmaxBrightness;
+
+      this.notify("hue");
+    }
+
+    destroy() {
+      this.stopPolling();
     }
   },
 );
