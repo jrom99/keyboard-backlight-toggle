@@ -14,15 +14,7 @@ const APP_ID = "keyboard-backlight@jrom99.github.com";
 export const HueSlider = GObject.registerClass(
   {
     Properties: {
-      value: GObject.ParamSpec.int(
-        "value",
-        "Value",
-        "Slider value",
-        GObject.ParamFlags.READWRITE,
-        0,
-        360,
-        0,
-      ),
+      value: GObject.ParamSpec.int("value", "Value", "Slider value", GObject.ParamFlags.READWRITE, 0, 360, 0),
     },
   },
   class HueSlider extends PopupMenu.PopupBaseMenuItem {
@@ -82,7 +74,7 @@ export const LightnessSlider = GObject.registerClass(
       ),
     },
   },
-  class BrightnessSlider extends PopupMenu.PopupBaseMenuItem {
+  class LightnessSlider extends PopupMenu.PopupBaseMenuItem {
     constructor() {
       super({
         activate: false,

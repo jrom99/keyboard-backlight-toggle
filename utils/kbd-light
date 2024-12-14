@@ -4,6 +4,7 @@ import argparse
 
 SYSFS_PREFIX = "/sys/class/leds/rgb:kbd_backlight"
 
+
 def write(file: str, value: str):
     try:
         with open(file, "w") as handle:
@@ -15,7 +16,7 @@ def write(file: str, value: str):
 
 
 def set_brightness(value: int):
-    value = max(0, min(4, value))
+    value = max(0, value)
     write(f"{SYSFS_PREFIX}/brightness", str(value))
 
 
@@ -29,10 +30,10 @@ def main():
         description="Control the keyboard backlight's brightness and RGB settings."
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    bright = subparsers.add_parser("brightness", help="Set keyboard backlight brightness")
-    bright.add_argument(
-       "value", type=int, choices=range(5), help="Brightness value (0-4)"
-   )
+    bright = subparsers.add_parser(
+        "brightness", help="Set keyboard backlight brightness"
+    )
+    bright.add_argument("value", type=int, help="Brightness value")
 
     color = subparsers.add_parser("color", help="Set keyboard backlight RGB intensity")
     color.add_argument("red", type=int, help="Red intensity (0-255)")
@@ -47,6 +48,7 @@ def main():
         set_color(args.red, args.green, args.blue)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

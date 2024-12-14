@@ -102,20 +102,6 @@ export const LedManager = GObject.registerClass(
       }
     }
 
-    /** Switch brightness between on and off status, remembering the previous brightness
-     * @param {boolean} off
-     */
-    toggleBrightness(off) {
-      console.debug(`${APP_ID}: Toggling brightness ${off ? "off" : "on"}`);
-      if (off) {
-        this._oldBrightness = this._HardwareBrightness;
-        this._HardwareBrightness = 0;
-      } else {
-        this._HardwareBrightness = this._oldBrightness ?? this._HWmaxBrightness;
-        this._oldBrightness = null;
-      }
-    }
-
     /** Brightness as reported by the kernel */
     get _HardwareBrightness() {
       return this._device?.get_sysfs_attr_as_int_uncached("brightness") ?? 0;
@@ -163,7 +149,7 @@ export const LedManager = GObject.registerClass(
 
     /** If the manager can read hardware changes */
     get canRead() {
-      return typeof this._device?.get_sysfs_attr_as_int("max_brightness") === "number";
+      return typeof this._device?.get_sysfs_attr_as_int_uncached("max_brightness") === "number";
     }
 
     /** If the manager can write changes to hardware */
@@ -183,6 +169,20 @@ export const LedManager = GObject.registerClass(
         green: Math.round((green * brightness) / maxBrightness),
         blue: Math.round((blue * brightness) / maxBrightness),
       };
+    }
+
+    /** Switch brightness between on and off status, remembering the previous brightness
+     * @param {boolean} off
+     */
+    toggleBrightness(off) {
+      console.debug(`${APP_ID}: Toggling brightness ${off ? "off" : "on"}`);
+      if (off) {
+        this._oldBrightness = this._HardwareBrightness;
+        this._HardwareBrightness = 0;
+      } else {
+        this._HardwareBrightness = this._oldBrightness ?? this._HWmaxBrightness;
+        this._oldBrightness = null;
+      }
     }
 
     get lightness() {
