@@ -4,6 +4,8 @@ This extension replaces the default GNOME quick settings Keyboard toggle with on
 
 ## Requirements
 
+For clevo/tuxedo devices, you'll need to install the drivers from https://gitlab.com/tuxedocomputers/development/packages/tuxedo-drivers.git
+
 You will need `gnome-extensions` and sudo access to install and uninstall.
 
 ## Installation
